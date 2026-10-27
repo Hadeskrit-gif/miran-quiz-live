@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ведущий: викторина про Мирашу</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- СТАРТ -->
+<section class="screen active" id="aStart" aria-label="Начало">
+  <div class="hero">
+    <div class="copy">
+      <h1>Насколько хорошо вы знаете <span class="gold">Мирашу?</span></h1>
+      <p class="lead">Экран ведущего. Показываем вопросы, потом разбираем правильные ответы и в конце выводим таблицу результатов.</p>
+      <button class="btn" id="btnBegin" type="button">Начать
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <p class="hint">Пробел или Enter: главная кнопка. <kbd>→</kbd>: дальше. <kbd>F</kbd>: полный экран. <button type="button" id="btnPeek" style="text-decoration:underline;font:inherit;color:inherit">Посмотреть результаты</button></p>
+    </div>
+    <div class="photo-wrap">
+      <div class="frame arch"><div class="ph"><img src="assets/start.jpg" alt="Мираша сидит в кресле с утёнком"></div>
+        <div class="sticker st-crown"><svg><use href="#crown"/></svg></div>
+        <div class="sticker st-owl"><svg><use href="#owl"/></svg></div>
+        <div class="sticker st-books"><svg><use href="#books"/></svg></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ВОПРОС / РАЗБОР -->
+<section class="screen" id="aStage" aria-live="polite">
+  <div class="topbar">
+    <div class="qnum" id="qnum">Вопрос 1 из 12</div>
+    <div class="progress" role="progressbar" aria-valuemin="0" id="progress"><i id="progressFill"></i></div>
+  </div>
+  <div class="stage">
+    <div class="photo-wrap" id="photoWrap"></div>
+    <div class="panel">
+      <div class="qcard"><h2 id="qtext"></h2></div>
+      <div class="askbar" id="askbar"><button class="btn" id="btnMain" type="button">Варианты</button></div>
+      <div class="timer" id="timer" hidden>
+        <div class="t-track"><i id="tFill"></i></div><b id="tNum">30</b>
+        <button class="btn ghost" id="btnSkip" type="button" style="font-size:min(1.3vw,2.4vh);padding:1.4vh 1.5vw">Дальше</button>
+      </div>
+      <div class="opts static" id="opts"></div>
+      <div class="note-box" id="noteBox" hidden>
+        <div class="owl"><svg viewBox="0 0 120 124"><use href="#owl"/></svg></div>
+        <div><div class="n1" id="n1"></div><div class="n2" id="n2"></div></div>
+      </div>
+      <div class="askbar" id="afterBar" hidden><button class="btn" id="btnAfter" type="button">Дальше</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ПЕРЕХОД К ОТВЕТАМ -->
+<section class="screen" id="aIntro" aria-label="Правильные ответы">
+  <div class="center-card">
+    <div class="owl-big"><svg viewBox="0 0 120 124"><use href="#owl"/></svg></div>
+    <h1>А теперь, <span class="gold">правильные ответы</span></h1>
+    <button class="btn" id="btnIntro" type="button">Показать
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</section>
+
+<!-- РЕЗУЛЬТАТЫ -->
+<section class="screen" id="aRes" aria-label="Результаты">
+  <div class="res-wrap">
+    <h1>Результаты:</h1>
+    <div class="res-sub"><span id="resCount"></span><button class="btn ghost" id="btnRefresh" type="button" style="font-size:min(1.2vw,2.2vh);padding:1.1vh 1.4vw">Обновить</button><button class="btn ghost" id="btnHome" type="button" style="font-size:min(1.2vw,2.2vh);padding:1.1vh 1.4vw">В начало</button></div>
+    <div class="res" id="resTables"></div>
+  </div>
+</section>
+
+<script src="data.js"></script>
+<script src="shell.js"></script>
+<script>
+(function () {
+  var TOTAL = QUESTIONS.length, LIMIT = CONFIG.limitSeconds, KEY = "miranQuizLive:admin:v1", CACHE = "miranQuizLive:results:v1:" + CONFIG.topic;
+  var LETTERS = ["А", "Б", "В", "Г", "Д", "Е"];
+  var phase = "start", idx = 0, deadline = 0, timerId = 0, pollId = 0, revealed = false, opened = false;
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify({ phase: phase, idx: idx })); } catch (e) {} }
+  function showScreen(name) {
+    ["aStart", "aStage", "aIntro", "aRes"].forEach(function (s) { $(s).classList.toggle("active", s === name); });
+    document.querySelectorAll(".screen.active").forEach(function (el) { el.scrollTop = 0; });
+  }
+  function stickerFor(i) {
+    var k = i % 3;
+    var html = '<div class="sticker st-spark" style="left:-3vmin;top:12%"><svg><use href="#sparkle"/></svg></div>' +
+               '<div class="sticker st-spark" style="right:-2.5vmin;bottom:18%;width:3.6vmin;height:3.6vmin"><svg><use href="#sparkle"/></svg></div>';
+    if (k === 0) html += '<div class="sticker st-crown"><svg><use href="#crown"/></svg></div>';
+    if (k === 1) html += '<div class="sticker st-owl"><svg><use href="#owl"/></svg></div>';
+    if (k === 2) html += '<div class="sticker st-books"><svg><use href="#books"/></svg></div>';
+    return html;
+  }
+
+  /* ---------- общий экран вопроса ---------- */
+  function renderStage(mode) {
+    clearInterval(timerId); revealed = false; opened = false;
+    var q = QUESTIONS[idx];
+    $("qnum").textContent = (mode === "ask" ? "Вопрос " : "Разбор: вопрос ") + (idx + 1) + " из " + TOTAL;
+    $("progress").setAttribute("aria-valuemax", TOTAL);
+    $("progressFill").style.width = ((idx + (mode === "ask" ? 0 : 1)) / TOTAL * 100) + "%";
+    $("qtext").textContent = q.q;
+    $("opts").innerHTML = ""; $("opts").classList.toggle("many", q.options.length > 4);
+    $("timer").hidden = true; $("timer").classList.remove("low", "done");
+    $("noteBox").hidden = true; $("afterBar").hidden = true;
+    $("askbar").hidden = false;
+    $("btnMain").textContent = mode === "ask" ? "Варианты" : "Правильный ответ";
+
+    var wrap = $("photoWrap");
+    wrap.innerHTML = '<div class="frame swap"><div class="ph"><img alt="Мираша"></div>' + stickerFor(idx) + "</div>";
+    var frame = wrap.firstChild, img = frame.querySelector("img");
+    var fit = function () { var land = img.naturalWidth > img.naturalHeight; frame.classList.toggle("land", land); frame.classList.toggle("arch", !land); };
+    img.addEventListener("load", fit);
+    img.src = q.photo;
+    if (q.pos) img.style.objectPosition = q.pos;
+    if (img.complete) fit();
+    showScreen("aStage");
+  }
+
+  function buildOptions() {
+    var q = QUESTIONS[idx], box = $("opts"); box.innerHTML = "";
+    q.options.forEach(function (text, k) {
+      var b = document.createElement("div"); b.className = "opt";
+      var l = document.createElement("span"); l.className = "letter"; l.textContent = LETTERS[k];
+      if (q.colors) l.style.background = q.colors[k];
+      var t = document.createElement("span"); t.className = "label"; t.textContent = text;
+      var tag = document.createElement("span"); tag.className = "tag";
+      b.appendChild(l); b.appendChild(t); b.appendChild(tag);
+      box.appendChild(b);
+    });
+  }
+
+  /* ---------- вопросы: варианты и таймер ---------- */
+  function ask(i) { phase = "ask"; idx = i; save(); renderStage("ask"); }
+
+  function showOptions() {
+    if (opened) return; opened = true;
+    buildOptions();
+    $("askbar").hidden = true; $("timer").hidden = false;
+    deadline = Date.now() + LIMIT * 1000;
+    tick(); clearInterval(timerId); timerId = setInterval(tick, 200);
+  }
+  function tick() {
+    var left = deadline - Date.now();
+    $("tNum").textContent = Math.max(0, Math.ceil(left / 1000));
+    $("tFill").style.width = Math.max(0, left / (LIMIT * 1000) * 100) + "%";
+    $("timer").classList.toggle("low", left <= 10000);
+    if (left <= 0) { clearInterval(timerId); $("tNum").textContent = "Время вышло"; $("timer").classList.add("done"); var my = idx; setTimeout(function () { if (phase === "ask" && idx === my) nextAsk(); }, 900); }
+  }
+  function nextAsk() {
+    if (phase !== "ask") return;
+    clearInterval(timerId);
+    if (idx >= TOTAL - 1) return intro();
+    ask(idx + 1);
+  }
+
+  /* ---------- переход и разбор ---------- */
+  function intro() { phase = "intro"; save(); showScreen("aIntro"); }
+  function reveal(i) { phase = "reveal"; idx = i; save(); renderStage("reveal"); }
+
+  function showCorrect() {
+    if (revealed) return; revealed = true;
+    var q = QUESTIONS[idx], all = q.correct === "all";
+    buildOptions();
+    document.querySelectorAll("#opts .opt").forEach(function (b, k) {
+      var ok = all || k === q.correct, tag = b.querySelector(".tag");
+      if (ok) { b.classList.add("correct", "show-tag"); tag.textContent = all ? "верно!" : "верный ответ"; b.querySelector(".letter").style.background = ""; b.querySelector(".letter").textContent = "✓"; }
+      else b.classList.add("dim");
+    });
+    var extra = q.extraOpt ? q.extraOpt[q.correct === "all" ? 0 : q.correct] : (q.extra || "");
+    $("n1").textContent = q.note; $("n2").textContent = extra;
+    $("noteBox").hidden = false;
+    $("askbar").hidden = true;
+    $("btnAfter").textContent = idx >= TOTAL - 1 ? "К результатам" : "Дальше";
+    $("afterBar").hidden = false;
+    var r = $("opts").getBoundingClientRect();
+    burst(r.left + r.width / 2, r.top + r.height / 3, 40);
+  }
+  function nextReveal() {
+    if (phase !== "reveal") return;
+    if (idx >= TOTAL - 1) return results();
+    reveal(idx + 1);
+  }
+
+  /* ---------- результаты ---------- */
+  function readCache() { try { return JSON.parse(localStorage.getItem(CACHE)) || {}; } catch (e) { return {}; } }
+  function writeCache(o) { try { localStorage.setItem(CACHE, JSON.stringify(o)); } catch (e) {} }
+
+  function fetchResults() {
+    var url = CONFIG.server + "/" + encodeURIComponent(CONFIG.topic) + "/json?poll=1&since=all";
+    return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.text(); }).then(function (text) {
+      var map = readCache();
+      text.split("\n").forEach(function (line) {
+        line = line.trim(); if (!line) return;
+        var ev; try { ev = JSON.parse(line); } catch (e) { return; }
+        if (ev.event !== "message") return;
+        var p; try { p = JSON.parse(ev.message); } catch (e) { return; }
+        if (!p || p.v !== 1 || !p.id || typeof p.name !== "string" || typeof p.score !== "number") return;
+        var prev = map[p.id];
+        if (!prev || (p.ts || 0) >= (prev.ts || 0)) map[p.id] = { id: p.id, name: p.name.slice(0, 30), score: p.score, total: p.total, ts: p.ts || 0 };
+      });
+      writeCache(map);
+      return true;
+    }).catch(function () { return false; });
+  }
+
+  function renderResults(online) {
+    var rows = Object.keys(readCache()).map(function (k) { return readCache()[k]; });
+    rows.sort(function (a, b) { return b.score - a.score || a.ts - b.ts; });
+    var rank = 0, last = null;
+    rows.forEach(function (r, i) { if (r.score !== last) { rank = i + 1; last = r.score; } r.place = rank; });
+    $("resCount").textContent = "Игроков: " + rows.length + (online === false ? " · нет связи, показываем сохранённое" : " · обновляется само");
+    var box = $("resTables"); box.innerHTML = "";
+    if (!rows.length) { box.innerHTML = '<div class="empty-res">Пока никто не закончил игру</div>'; return; }
+    var PER = 10;
+    for (var s = 0; s < rows.length; s += PER) {
+      var t = document.createElement("table"); t.className = "rtable";
+      var head = document.createElement("thead"); head.innerHTML = "<tr><th>Место</th><th>Имя</th><th>Баллы</th></tr>"; t.appendChild(head);
+      var tb = document.createElement("tbody");
+      rows.slice(s, s + PER).forEach(function (r) {
+        var tr = document.createElement("tr"); if (r.place <= 3) tr.className = "p" + r.place;
+        var a = document.createElement("td"); a.textContent = r.place;
+        var b = document.createElement("td"); b.className = "nm"; b.textContent = r.name;
+        var c = document.createElement("td"); c.textContent = r.score + " / " + (r.total || TOTAL);
+        tr.appendChild(a); tr.appendChild(b); tr.appendChild(c); tb.appendChild(tr);
+      });
+      t.appendChild(tb); box.appendChild(t);
+    }
+  }
+
+  var firstResults = true;
+  function results() {
+    phase = "results"; save(); showScreen("aRes"); renderResults();
+    refresh();
+    clearInterval(pollId); pollId = setInterval(refresh, 8000);
+    if (firstResults) { firstResults = false; rain(100); }
+  }
+  function refresh() { fetchResults().then(function (ok) { if (phase === "results") renderResults(ok); }); }
+
+  function home() { clearInterval(pollId); clearInterval(timerId); phase = "start"; idx = 0; save(); showScreen("aStart"); }
+
+  /* ---------- кнопки и клавиши ---------- */
+  $("btnBegin").addEventListener("click", function () { ask(0); });
+  $("btnPeek").addEventListener("click", results);
+  $("btnMain").addEventListener("click", function () { if (phase === "ask") showOptions(); else showCorrect(); });
+  $("btnSkip").addEventListener("click", nextAsk);
+  $("btnAfter").addEventListener("click", nextReveal);
+  $("btnIntro").addEventListener("click", function () { reveal(0); });
+  $("btnRefresh").addEventListener("click", refresh);
+  $("btnHome").addEventListener("click", home);
+
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var k = e.key;
+    if (k === "f" || k === "F" || k === "а" || k === "А") { e.preventDefault(); return toggleFs(); }
+    var go = k === "Enter" || k === " " || k === "ArrowRight";
+    if (!go) return;
+    e.preventDefault();
+    if (phase === "start") ask(0);
+    else if (phase === "ask") { if (!opened) showOptions(); else if (k === "ArrowRight") nextAsk(); }
+    else if (phase === "intro") reveal(0);
+    else if (phase === "reveal") { if (!revealed) showCorrect(); else nextReveal(); }
+  });
+
+  /* ---------- восстановление после перезагрузки ---------- */
+  fetchResults();
+  var saved = null; try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  if (saved && saved.phase === "ask") ask(Math.min(saved.idx || 0, TOTAL - 1));
+  else if (saved && saved.phase === "intro") intro();
+  else if (saved && saved.phase === "reveal") reveal(Math.min(saved.idx || 0, TOTAL - 1));
+  else if (saved && saved.phase === "results") results();
+})();
+</script>
+</body>
+</html>

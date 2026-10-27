@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Насколько хорошо вы знаете Мирашу?</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ИМЯ -->
+<section class="screen active" id="name" aria-label="Знакомство">
+  <div class="hero">
+    <div class="copy">
+      <h1>Насколько хорошо вы знаете <span class="gold">Мирашу?</span></h1>
+      <p class="lead">Введите имя, чтобы ваши баллы попали в общую таблицу результатов. На каждый вопрос даётся 30 секунд после нажатия на «Варианты».</p>
+      <form id="nameForm" autocomplete="off" style="display:flex;flex-direction:column;align-items:flex-start;gap:3vh;width:100%">
+        <input class="field" id="nameInput" type="text" maxlength="30" placeholder="Ваше имя" aria-label="Ваше имя" enterkeyhint="go" autocomplete="off">
+        <button class="btn" id="btnStart" type="submit" disabled>Начать
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+    </div>
+    <div class="photo-wrap">
+      <div class="frame arch"><div class="ph"><img src="assets/start.jpg" alt="Мираша сидит в кресле с утёнком"></div>
+        <div class="sticker st-crown"><svg><use href="#crown"/></svg></div>
+        <div class="sticker st-owl"><svg><use href="#owl"/></svg></div>
+        <div class="sticker st-books"><svg><use href="#books"/></svg></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ВОПРОС -->
+<section class="screen" id="quiz" aria-live="polite">
+  <div class="topbar">
+    <div class="qnum" id="qnum">Вопрос 1 из 12</div>
+    <div class="progress" role="progressbar" aria-valuemin="0" id="progress"><i id="progressFill"></i></div>
+  </div>
+  <div class="stage">
+    <div class="photo-wrap" id="photoWrap"></div>
+    <div class="panel">
+      <div class="qcard"><h2 id="qtext"></h2></div>
+      <div class="askbar" id="askbar">
+        <button class="btn" id="btnOpts" type="button">Варианты</button>
+        <p class="hint">После нажатия появятся варианты и включится таймер на 30 секунд</p>
+      </div>
+      <div class="timer" id="timer" hidden>
+        <div class="t-track"><i id="tFill"></i></div><b id="tNum">30</b>
+      </div>
+      <div class="opts" id="opts" role="group" aria-label="Варианты ответа"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ФИНАЛ -->
+<section class="screen" id="final" aria-label="Результат">
+  <div class="hero">
+    <div class="copy">
+      <h1 id="thanks">Спасибо!</h1>
+      <div class="score-badge">
+        <div class="badge"><b id="scoreNum">0</b><span id="scoreOf">из 12</span></div>
+        <div class="score-text">
+          <div class="big" id="scoreLine"></div>
+          <div class="msg">Правильные ответы разберём вместе. Смотрите на большой экран!</div>
+        </div>
+      </div>
+      <div class="wish">С первым днём рождения, Мираша!</div>
+      <div class="status" id="status"></div>
+      <button class="btn ghost" id="btnResend" type="button" hidden>Отправить ещё раз</button>
+    </div>
+    <div class="photo-wrap">
+      <div class="frame arch"><div class="ph"><img src="assets/final.jpg" alt="Мираша на именинной машинке"></div>
+        <div class="sticker st-crown"><svg><use href="#crown"/></svg></div>
+        <div class="sticker st-owl"><svg><use href="#owl"/></svg></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="data.js"></script>
+<script src="shell.js"></script>
+<script>
+(function () {
+  var TOTAL = QUESTIONS.length, LIMIT = CONFIG.limitSeconds, KEY = "miranQuizLive:player:v1";
+  var LETTERS = ["А", "Б", "В", "Г", "Д", "Е"];
+  var S = null, timerId = 0, locked = false, sendTimer = 0, sendTries = 0;
+
+  function rid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+  function fresh() { return { id: rid(), name: "", i: 0, answers: [], deadline: null, done: false, sent: false, ts: 0 }; }
+  function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+  try { if (new URLSearchParams(location.search).get("reset")) { localStorage.removeItem(KEY); history.replaceState(null, "", location.pathname); } } catch (e) {}
+  S = load() || fresh();
+
+  function showScreen(name) {
+    ["name", "quiz", "final"].forEach(function (s) { $(s).classList.toggle("active", s === name); });
+    document.querySelectorAll(".screen.active").forEach(function (el) { el.scrollTop = 0; });
+  }
+
+  function score() {
+    var n = 0;
+    QUESTIONS.forEach(function (q, i) {
+      var a = S.answers[i];
+      if (a === null || a === undefined) return;
+      if (q.correct === "all" || a === q.correct) n++;
+    });
+    return n;
+  }
+
+  /* ---------- имя ---------- */
+  var input = $("nameInput"), btnStart = $("btnStart");
+  input.addEventListener("input", function () { btnStart.disabled = !input.value.trim(); });
+  $("nameForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var name = input.value.trim().replace(/\s+/g, " ");
+    if (!name) return;
+    S = fresh(); S.name = name; save();
+    showScreen("quiz"); renderQuestion();
+  });
+
+  /* ---------- вопрос ---------- */
+  function stickerFor(i) {
+    var k = i % 3;
+    var html = '<div class="sticker st-spark" style="left:-3vmin;top:12%"><svg><use href="#sparkle"/></svg></div>' +
+               '<div class="sticker st-spark" style="right:-2.5vmin;bottom:18%;width:3.6vmin;height:3.6vmin"><svg><use href="#sparkle"/></svg></div>';
+    if (k === 0) html += '<div class="sticker st-crown"><svg><use href="#crown"/></svg></div>';
+    if (k === 1) html += '<div class="sticker st-owl"><svg><use href="#owl"/></svg></div>';
+    if (k === 2) html += '<div class="sticker st-books"><svg><use href="#books"/></svg></div>';
+    return html;
+  }
+
+  function renderQuestion() {
+    clearInterval(timerId); locked = false;
+    if (S.i >= TOTAL) return finish();
+    var q = QUESTIONS[S.i];
+    $("qnum").textContent = "Вопрос " + (S.i + 1) + " из " + TOTAL;
+    $("progress").setAttribute("aria-valuemax", TOTAL);
+    $("progress").setAttribute("aria-valuenow", S.i);
+    $("progressFill").style.width = (S.i / TOTAL * 100) + "%";
+    $("qtext").textContent = q.q;
+    $("quiz").classList.remove("opened");
+    $("opts").innerHTML = ""; $("opts").classList.toggle("many", q.options.length > 4);
+    $("timer").hidden = true; $("timer").classList.remove("low", "done");
+    $("askbar").hidden = false;
+
+    var wrap = $("photoWrap");
+    wrap.innerHTML = '<div class="frame swap"><div class="ph"><img alt="Мираша"></div>' + stickerFor(S.i) + "</div>";
+    var frame = wrap.firstChild, img = frame.querySelector("img");
+    var fit = function () { var land = img.naturalWidth > img.naturalHeight; frame.classList.toggle("land", land); frame.classList.toggle("arch", !land); };
+    img.addEventListener("load", fit);
+    img.src = q.photo;
+    if (q.pos) img.style.objectPosition = q.pos;
+    if (img.complete) fit();
+
+    if (S.deadline) {                       // страницу перезагрузили, пока шёл таймер
+      if (Date.now() >= S.deadline) return commit(null, true);
+      openOptions();
+    }
+  }
+
+  function openOptions() {
+    var q = QUESTIONS[S.i];
+    if (!S.deadline) { S.deadline = Date.now() + LIMIT * 1000; save(); }
+    $("askbar").hidden = true; $("timer").hidden = false; $("quiz").classList.add("opened");
+    var box = $("opts"); box.innerHTML = "";
+    q.options.forEach(function (text, k) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "opt";
+      var l = document.createElement("span"); l.className = "letter"; l.textContent = LETTERS[k];
+      if (q.colors) l.style.background = q.colors[k];
+      var t = document.createElement("span"); t.className = "label"; t.textContent = text;
+      b.appendChild(l); b.appendChild(t);
+      b.addEventListener("click", function () { choose(k, b); });
+      box.appendChild(b);
+    });
+    tick(); clearInterval(timerId); timerId = setInterval(tick, 200);
+  }
+
+  function tick() {
+    if (locked) return;
+    var left = S.deadline - Date.now();
+    $("tNum").textContent = Math.max(0, Math.ceil(left / 1000));
+    $("tFill").style.width = Math.max(0, left / (LIMIT * 1000) * 100) + "%";
+    $("timer").classList.toggle("low", left <= 10000);
+    if (left <= 0) {
+      locked = true; clearInterval(timerId);
+      $("tNum").textContent = "Время вышло"; $("timer").classList.add("done");
+      document.querySelectorAll("#opts .opt").forEach(function (b) { b.disabled = true; b.classList.add("dim"); });
+      commit(null, false, 900);
+    }
+  }
+
+  function choose(k, btn) {
+    if (locked) return;
+    locked = true; clearInterval(timerId);
+    document.querySelectorAll("#opts .opt").forEach(function (b) { b.disabled = true; if (b !== btn) b.classList.add("dim"); });
+    btn.classList.add("chosen");
+    $("tNum").textContent = "Ответ принят"; $("timer").classList.add("done"); $("timer").classList.remove("low");
+    commit(k, false, 750);
+  }
+
+  /* фиксируем ответ сразу, на экране остаёмся ещё немного */
+  function commit(a, immediate, delay) {
+    S.answers[S.i] = a; S.i++; S.deadline = null; save();
+    if (immediate) return renderQuestion();
+    setTimeout(renderQuestion, delay || 0);
+  }
+
+  /* ---------- финал ---------- */
+  function finish() {
+    clearInterval(timerId);
+    if (!S.done) { S.done = true; S.ts = Date.now(); save(); }
+    var s = score();
+    $("thanks").textContent = "Спасибо, " + S.name + "!";
+    $("scoreNum").textContent = s; $("scoreOf").textContent = "из " + TOTAL;
+    $("scoreLine").textContent = "Вы набрали " + s + " из " + TOTAL + " баллов";
+    showScreen("final");
+    rain(110);
+    if (S.sent) setStatus("ok", "Результат отправлен ведущему ✓"); else send();
+  }
+
+  function setStatus(kind, text) {
+    var el = $("status"); el.className = "status " + (kind || ""); el.textContent = text;
+    $("btnResend").hidden = kind !== "err";
+  }
+
+  function send() {
+    clearTimeout(sendTimer);
+    setStatus("", "Отправляем результат…");
+    var payload = { v: 1, id: S.id, name: S.name, score: score(), total: TOTAL, answers: S.answers, ts: S.ts || Date.now() };
+    var ctrl = window.AbortController ? new AbortController() : null;
+    var to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 10000);
+    fetch(CONFIG.server + "/" + encodeURIComponent(CONFIG.topic), { method: "POST", body: JSON.stringify(payload), signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); })
+      .then(function () { clearTimeout(to); S.sent = true; save(); setStatus("ok", "Результат отправлен ведущему ✓"); })
+      .catch(function () {
+        clearTimeout(to);
+        if (++sendTries < 30) { setStatus("err", "Нет связи, пробуем ещё раз…"); sendTimer = setTimeout(send, 6000); }
+        else setStatus("err", "Не удалось отправить результат.");
+      });
+  }
+  $("btnResend").addEventListener("click", function () { sendTries = 0; send(); });
+  $("btnOpts").addEventListener("click", openOptions);
+
+  document.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!$("quiz").classList.contains("active")) return;
+    if (locked) return;
+    var opened = !$("timer").hidden;
+    if (!opened) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openOptions(); } return; }
+    var n = parseInt(e.key, 10), btns = document.querySelectorAll("#opts .opt");
+    if (n >= 1 && n <= btns.length) { e.preventDefault(); choose(n - 1, btns[n - 1]); }
+  });
+
+  /* ---------- старт страницы ---------- */
+  if (S.done) { showScreen("final"); finish(); }
+  else if (S.name) { showScreen("quiz"); renderQuestion(); }
+  else { btnStart.disabled = !input.value.trim(); }
+})();
+</script>
+</body>
+</html>
